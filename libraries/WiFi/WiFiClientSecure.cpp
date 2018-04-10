@@ -47,14 +47,43 @@ extern "C" {
 
 //--tested, working--//
 //--client side--//
-WiFiClientSecure::WiFiClientSecure() : WiFiClient() {}
+WiFiClientSecure::WiFiClientSecure() : WiFiClient() {
+	socketOptListHead = NULL;
+	socketOptListTail = NULL;
+}
 
 //--tested, working--//
 //--server side--//
 WiFiClientSecure::WiFiClientSecure(uint8_t socketIndex) : WiFiClient(socketIndex) {}
 
 
-WiFiClientSecure::~WiFiClientSecure() {}
+WiFiClientSecure::~WiFiClientSecure() {
+	removeSocketOpts();
+}
+
+void WiFiClientSecure::addConnectSocketOpt(_i16 level, _i16 optname, const void *optval, SlSocklen_t optlen){
+	socketOptList_t * opt = new socketOptList_t();
+	opt->level = level;
+	opt->optname = optname;
+	opt->optval = optval;
+	opt->optlen = optlen;
+	opt->next = NULL;
+	if(socketOptListTail != NULL) {
+		socketOptListTail->next = opt;
+	}
+	else socketOptListHead = opt;
+	socketOptListTail = opt;
+}
+
+void WiFiClientSecure::removeSocketOpts(){
+	socketOptList_t *prev;
+	while(socketOptListHead != NULL){
+		prev = socketOptListHead;
+		socketOptListHead = socketOptListHead->next;
+		delete prev;
+	}
+	socketOptListTail = NULL;
+}
 
 //--tested, working--//
 //--client side--//
@@ -103,17 +132,20 @@ int WiFiClientSecure::connect(IPAddress ip, uint16_t port)
 
     // Utilize rootCA file for verifying server certificate if it's been supplied with .sslRootCA() previously
     if (hasRootCA) {
-		int iRet = 0;
-		SlSockSecureMethod method;
-        method.secureMethod = SL_SO_SEC_METHOD_TLSV1_2;
-		iRet = sl_SetSockOpt(socketHandle, SL_SOL_SOCKET, SL_SO_SECMETHOD, (_u8 *)&method, sizeof(method));                                    if(iRet < 0){sslLastError = iRet; return false;}
-		SlSockSecureMask cipher;
-		cipher.secureMask = SL_SEC_MASK_TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA;
-        iRet = sl_SetSockOpt(socketHandle, SL_SOL_SOCKET, SL_SO_SECURE_MASK, (_u8 *)&cipher, sizeof(cipher));                                  if(iRet < 0){sslLastError = iRet; return false;}
-        iRet = sl_SetSockOpt(socketHandle, SL_SOL_SOCKET, SL_SO_SECURE_FILES_CA_FILE_NAME,          ROOTCA_PEM_FILE, strlen(ROOTCA_PEM_FILE)); if(iRet < 0){sslLastError = iRet; return false;}
-		iRet = sl_SetSockOpt(socketHandle, SL_SOL_SOCKET, SL_SO_SECURE_FILES_CERTIFICATE_FILE_NAME, CLIENT_PEM_FILE, strlen(CLIENT_PEM_FILE)); if(iRet < 0){sslLastError = iRet; return false;}
-		iRet = sl_SetSockOpt(socketHandle, SL_SOL_SOCKET, SL_SO_SECURE_FILES_PRIVATE_KEY_FILE_NAME, CLIENT_KEY_FILE, strlen(CLIENT_KEY_FILE)); if(iRet < 0){sslLastError = iRet; return false;}
+		addConnectSocketOpt(SL_SOL_SOCKET, SL_SO_SECURE_FILES_CA_FILE_NAME, ROOTCA_PEM_FILE, strlen(ROOTCA_PEM_FILE));
     }
+	
+	socketOptList_t *currentOpt = socketOptListHead;
+	while(currentOpt != NULL){
+		int iRet = sl_SetSockOpt(socketHandle, currentOpt->level, currentOpt->optname, currentOpt->optval, currentOpt->optlen);
+		if(iRet < 0) {
+			sslLastError = iRet;
+			return false;
+		}
+		currentOpt = currentOpt->next;
+	}
+	removeSocketOpts();
+	
     sslIsVerified = true;
 
     //

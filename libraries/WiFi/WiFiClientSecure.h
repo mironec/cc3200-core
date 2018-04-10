@@ -28,6 +28,14 @@
 class WiFiClientSecure : public WiFiClient {
     
 public:
+	typedef struct socketOptList {
+		_i16 level;
+		_i16 optname;
+		const void *optval;
+		SlSocklen_t optlen;
+		struct socketOptList *next;
+	} socketOptList_t;
+
     WiFiClientSecure();
     WiFiClientSecure(uint8_t sock);
     ~WiFiClientSecure();
@@ -36,13 +44,17 @@ public:
 	virtual int useRootCA(void);
 	virtual int32_t sslGetReasonID(void);
     virtual const char *sslGetReason(void);
+	void addConnectSocketOpt(_i16 level, _i16 optname, const void *optval, SlSocklen_t optlen);
+	void removeSocketOpts();
 	
 	boolean sslIsVerified;
-
+	
 protected:
 	boolean sslVerifyStrict;
     boolean hasRootCA;
     int32_t sslLastError;
+	socketOptList_t *socketOptListHead;
+	socketOptList_t *socketOptListTail;
 };
 
 #endif
